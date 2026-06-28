@@ -263,18 +263,29 @@ class MediaGrabApp(ctk.CTk):
         # Nav
         nf = ctk.CTkFrame(side, fg_color='transparent')
         nf.grid(row=1, column=0, sticky='ew')
-        for label, active in [('  Dashboard', True), ('  Queue', False),
-                               ('  Library', False), ('  Settings', False)]:
+        self._nav_frames = {}
+        nav_defs = [
+            ('Dashboard', '  Dashboard', self._nav_dashboard),
+            ('Queue',     '  Queue',     self._nav_queue),
+            ('Library',   '  Library',   self._nav_library),
+            ('Settings',  '  Settings',  self._nav_settings),
+        ]
+        for key, label, cmd in nav_defs:
+            active = (key == 'Dashboard')
             r = ctk.CTkFrame(nf, fg_color=C['card'] if active else 'transparent',
-                             corner_radius=0, height=44)
+                             corner_radius=0, height=44, cursor='hand2')
             r.pack(fill='x', pady=1)
             r.pack_propagate(False)
-            if active:
-                ctk.CTkFrame(r, fg_color=C['accent'], width=3,
-                             corner_radius=0).pack(side='left', fill='y')
-            ctk.CTkLabel(r, text=label, font=('Segoe UI', 12),
-                         text_color=C['accent'] if active else C['sub']
-                         ).pack(side='left', padx=10)
+            ind = ctk.CTkFrame(r, fg_color=C['accent'] if active else 'transparent',
+                               width=3, corner_radius=0)
+            ind.pack(side='left', fill='y')
+            lbl = ctk.CTkLabel(r, text=label, font=('Segoe UI', 12),
+                               text_color=C['accent'] if active else C['sub'])
+            lbl.pack(side='left', padx=10)
+            r.bind('<Button-1>',   lambda e, c=cmd: c())
+            lbl.bind('<Button-1>', lambda e, c=cmd: c())
+            self._nav_frames[key] = (r, ind, lbl)
+        self._active_nav = 'Dashboard'
 
         # User panel
         uf = ctk.CTkFrame(side, fg_color=C['card'], corner_radius=8)
@@ -515,6 +526,90 @@ class MediaGrabApp(ctk.CTk):
                                         border_width=0, corner_radius=8,
                                         wrap='word', state='disabled')
         self._log_box.pack(fill='x', padx=16, pady=(0, 14))
+
+    # ── Nav handlers ──────────────────────────────────────────────────────────
+    def _set_nav(self, key):
+        self._active_nav = key
+        for k, (r, ind, lbl) in self._nav_frames.items():
+            active = (k == key)
+            r.configure(fg_color=C['card'] if active else 'transparent')
+            ind.configure(fg_color=C['accent'] if active else 'transparent')
+            lbl.configure(text_color=C['accent'] if active else C['sub'])
+
+    def _nav_dashboard(self):
+        self._set_nav('Dashboard')
+        # scroll to top
+        try: self._body._parent_canvas.yview_moveto(0)
+        except Exception: pass
+
+    def _nav_queue(self):
+        self._set_nav('Queue')
+        # scroll to download section if visible
+        try: self._body._parent_canvas.yview_moveto(1)
+        except Exception: pass
+
+    def _nav_library(self):
+        self._set_nav('Library')
+        outdir = self._out_entry.get().strip() if hasattr(self, '_out_entry') else os.path.expanduser('~/Downloads')
+        if not outdir or not os.path.isdir(outdir):
+            outdir = os.path.expanduser('~/Downloads')
+        os.startfile(outdir)
+
+    def _nav_settings(self):
+        self._set_nav('Settings')
+        win = ctk.CTkToplevel(self)
+        win.title('Settings — MediaGrab')
+        win.geometry('520x380')
+        win.configure(fg_color=C['bg'])
+        win.grab_set()
+        win.resizable(False, False)
+
+        ctk.CTkLabel(win, text='Settings', font=('Segoe UI', 18, 'bold'),
+                     text_color=C['text']).pack(anchor='w', padx=28, pady=(24, 18))
+
+        def _row(parent, label, value, browse=False):
+            f = ctk.CTkFrame(parent, fg_color='transparent')
+            f.pack(fill='x', padx=28, pady=(0, 14))
+            ctk.CTkLabel(f, text=label, font=('Consolas', 9),
+                         text_color=C['sub']).pack(anchor='w', pady=(0, 5))
+            r = ctk.CTkFrame(f, fg_color='transparent')
+            r.pack(fill='x')
+            e = ctk.CTkEntry(r, font=('Segoe UI', 11), fg_color=C['card2'],
+                             border_color=C['border'], text_color=C['text'],
+                             border_width=1, corner_radius=8, height=38)
+            e.insert(0, value)
+            e.pack(side='left', fill='x', expand=True,
+                   padx=(0, 8) if browse else (0, 0))
+            if browse:
+                def _pick(entry=e):
+                    d = filedialog.askdirectory(title='Select folder')
+                    if d:
+                        entry.delete(0, 'end')
+                        entry.insert(0, d)
+                ctk.CTkButton(r, text='Browse', font=FONT, width=80, height=38,
+                              fg_color=C['card2'], hover_color=C['border'],
+                              text_color=C['text'], corner_radius=8,
+                              command=_pick).pack(side='left')
+            return e
+
+        ffmpeg_val = _FFMPEG if os.path.isfile(_FFMPEG) else 'Not found — install FFmpeg'
+        node_val   = _NODE   if os.path.isfile(_NODE)   else 'Not found — install Node.js'
+        outdir_val = self._out_entry.get().strip() if hasattr(self, '_out_entry') else os.path.expanduser('~/Downloads')
+
+        e_ffmpeg = _row(win, 'FFMPEG PATH', ffmpeg_val)
+        e_node   = _row(win, 'NODE.JS PATH', node_val)
+        e_out    = _row(win, 'DEFAULT SAVE FOLDER', outdir_val, browse=True)
+
+        def _save():
+            if hasattr(self, '_out_entry'):
+                self._out_entry.delete(0, 'end')
+                self._out_entry.insert(0, e_out.get().strip())
+            win.destroy()
+
+        ctk.CTkButton(win, text='Save', font=('Segoe UI', 12, 'bold'),
+                      fg_color=C['accent'], hover_color=C['accent2'],
+                      text_color='#ffffff', corner_radius=10, height=42,
+                      command=_save).pack(padx=28, pady=16, fill='x')
 
     # ── Helpers ───────────────────────────────────────────────────────────────
     def _card(self, parent, pady=(0, 10)):
