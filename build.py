@@ -28,11 +28,13 @@ cmd = [
     '--workpath', BUILD_DIR,
     '--specpath', ROOT,
 
-    # Bundle entire yt-dlp package (installed via pip)
+    # Bundle packages
     '--collect-all', 'yt_dlp',
+    '--collect-all', 'customtkinter',
 
-    # Extra hidden imports PyInstaller may miss
+    # Extra hidden imports
     '--hidden-import', 'yt_dlp.extractor.lazy_extractors',
+    '--hidden-import', 'PIL._tkinter_finder',
 
     # Windows exe metadata
     '--version-file', os.path.join(ROOT, 'version_info.txt'),
