@@ -208,17 +208,20 @@ class MediaGrabApp(ctk.CTk):
 
         class L:
             def debug(self, m):
-                # yt-dlp sends status lines as debug; skip raw internal noise
                 if m.startswith('[debug]'):
                     return
+                # Download progress lines go to the progress bar, not the log
+                if m.startswith('[download]') and any(c in m for c in ('%', 'MiB', 'KiB', 'GiB', 'ETA')):
+                    return
                 app._log(m)
-                # Update spinner text to reflect current step
                 for keyword, label in step_labels:
                     if keyword in m:
                         app.after(0, lambda lbl=label: app._spin_start(lbl))
                         break
 
             def info(self, m):
+                if m.startswith('[download]') and any(c in m for c in ('%', 'MiB', 'KiB', 'GiB', 'ETA')):
+                    return
                 app._log(m)
 
             def warning(self, m):
@@ -492,6 +495,11 @@ class MediaGrabApp(ctk.CTk):
         url = self._url_entry.get().strip()
         if not url: return
         self._fetch_btn.configure(state='disabled', text='Fetching…')
+        # Reset download button in case a previous download left it disabled
+        self._dl_btn.configure(state='disabled', text='▶  Download Now')
+        self._prog_bar.set(0)
+        self._pct_lbl.configure(text='')
+        self._eta_lbl.configure(text='')
         self._hide_cards(self._info_card, self._pl_card,
                           self._opt_card, self._save_card, self._dl_card)
         self._spin_start('Contacting server…')
@@ -713,11 +721,13 @@ class MediaGrabApp(ctk.CTk):
             threading.Thread(target=self._dl_playlist,
                              args=(outdir, h, l), daemon=True).start()
         else:
-            # Single video
+            # Single video — wrap in a completion callback
             url = self._url_entry.get().strip()
             fmt = make_fmt(h, l, self._fd)
-            threading.Thread(target=self._dl_single,
-                             args=(url, fmt, outdir, None), daemon=True).start()
+            def _run_single():
+                ok = self._dl_single(url, fmt, outdir, None)
+                self.after(0, lambda: self._dl_single_done(ok))
+            threading.Thread(target=_run_single, daemon=True).start()
 
     def _stop_dl(self):
         self._dl_stop = True
@@ -820,6 +830,18 @@ class MediaGrabApp(ctk.CTk):
             msg += f'\n{failed} failed — check log.'
         self._log(f'✔ Playlist done: {done}/{total}  failed:{failed}')
         messagebox.showinfo('MediaGrab', msg)
+
+    def _dl_single_done(self, ok):
+        self._dl_btn.configure(state='normal', text='▶  Download Now')
+        self._prog_bar.set(1.0)
+        self._pct_lbl.configure(text='Done' if ok else 'Error')
+        self._eta_lbl.configure(text='')
+        self._spin_stop()
+        if ok:
+            self._log('✔ Download complete!')
+            messagebox.showinfo('MediaGrab', 'Download complete!')
+        else:
+            messagebox.showerror('MediaGrab', 'Download failed.\nCheck the log for details.')
 
     # ── Log ───────────────────────────────────────────────────────────────────
     def _log(self, msg):
