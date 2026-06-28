@@ -175,14 +175,15 @@ class MediaGrabApp(ctk.CTk):
     # ── yt-dlp opts ───────────────────────────────────────────────────────────
     def _ydl_opts(self, skip_hls=False, **kw):
         o = {
-            'quiet':       False,   # False so status msgs reach our logger
+            'quiet':       False,
             'no_warnings': False,
-            'cachedir':    _CACHE,
-            'logger':      self._logger(),   # always wire our logger
+            'logger':      self._logger(),
         }
+        # js_runtimes Python API requires a dict {runtime: {config}}
+        # remote_components requires a list of strings
         if os.path.isfile(_NODE):
-            o['js_runtimes']       = f'node:{_NODE}'
-            o['remote_components'] = 'ejs:github'
+            o['js_runtimes']       = {'node': {'path': _NODE}}
+            o['remote_components'] = ['ejs:github']
         if os.path.isfile(_FFMPEG):
             o['ffmpeg_location'] = os.path.dirname(_FFMPEG)
         if skip_hls:
