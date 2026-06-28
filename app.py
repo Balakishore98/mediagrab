@@ -321,8 +321,8 @@ class MediaGrabApp(ctk.CTk):
         url_box.pack(fill='x')
         self._url_entry = ctk.CTkEntry(
             url_box, placeholder_text='https://www.youtube.com/watch?v=...',
-            font=('Segoe UI', 13), fg_color='transparent',
-            border_color='transparent', text_color=C['text'],
+            font=('Segoe UI', 13), fg_color=C['card2'],
+            border_color=C['card2'], text_color=C['text'],
             placeholder_text_color=C['sub'], border_width=0,
             corner_radius=0, height=52)
         self._url_entry.pack(side='left', fill='x', expand=True, padx=(14, 0))
