@@ -530,8 +530,9 @@ class MediaGrabApp(ctk.CTk):
         self._fill_lang(fd)
         self._show_cards(self._info_card, self._opt_card,
                           self._save_card, self._dl_card)
-        self._dl_btn.configure(state='normal')
-        self._spin_stop('Loading all audio languages…')
+        # Keep dl_btn disabled until Phase 2 loads full HLS formats (needed for dubbed audio)
+        self._dl_btn.configure(state='disabled', text='Loading audio tracks…')
+        self._spin_start('Loading all audio languages…')
         self._log(f'✔ {fd.title}  ({fmt_dur(fd.duration)})')
 
         def _p2():
@@ -553,6 +554,7 @@ class MediaGrabApp(ctk.CTk):
         self._log(f'✔ {n} audio languages found')
         self._spin_stop('Ready')
         self._fetch_btn.configure(state='normal', text='  Fetch  ')
+        self._dl_btn.configure(state='normal', text='▶  Download Now')
 
     # ── Playlist fetch ────────────────────────────────────────────────────────
     def _fetch_playlist(self, url):
