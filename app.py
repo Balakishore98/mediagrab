@@ -530,6 +530,7 @@ class MediaGrabApp(ctk.CTk):
         self._fill_lang(fd)
         self._show_cards(self._info_card, self._opt_card,
                           self._save_card, self._dl_card)
+        self._dl_btn.configure(state='normal')
         self._spin_stop('Loading all audio languages…')
         self._log(f'✔ {fd.title}  ({fmt_dur(fd.duration)})')
 
@@ -643,6 +644,7 @@ class MediaGrabApp(ctk.CTk):
         self._fd = fd
         self._fill_quality(fd)
         self._fill_lang(fd)
+        self._dl_btn.configure(state='normal')
         n = len(fd.languages)
         self._log(f'✔ Formats loaded — {n} audio languages available')
         self._spin_stop('Ready — select quality & language, then Download All')
