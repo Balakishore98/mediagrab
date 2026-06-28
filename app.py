@@ -20,22 +20,22 @@ _NODE   = r'C:\Program Files\nodejs\node.exe'
 _CACHE  = os.path.join(os.environ.get('APPDATA', os.path.expanduser('~')), 'MediaGrab', 'cache')
 os.makedirs(_CACHE, exist_ok=True)
 
-# ── Palette ────────────────────────────────────────────────────────────────────
+# ── Palette — Material Dark + Red accent ───────────────────────────────────────
 C = dict(
-    bg       = '#0a0a14',
-    bg2      = '#12121f',
-    card     = '#16162a',
-    card2    = '#1e1e38',
-    border   = '#2a2a50',
-    accent   = '#7057f5',
-    accent2  = '#5a44d9',
-    text     = '#f0f0ff',
-    sub      = '#8888aa',
-    success  = '#4fd18a',
-    error    = '#f05a6a',
-    warn     = '#f0c040',
-    row_odd  = '#13132a',
-    row_even = '#16162e',
+    bg       = '#131313',
+    sidebar  = '#1c1b1b',
+    card     = '#201f1f',
+    card2    = '#2a2a2a',
+    border   = '#2d2d2d',
+    accent   = '#e62117',
+    accent2  = '#c01510',
+    text     = '#e5e2e1',
+    sub      = '#9e8e8a',
+    success  = '#4ade80',
+    error    = '#ff6b6b',
+    warn     = '#fbbf24',
+    row_odd  = '#1c1b1b',
+    row_even = '#201f1f',
 )
 
 FONT      = ('Segoe UI', 11)
@@ -117,6 +117,14 @@ def make_fmt(h: int, lang: str, fd: FormatData) -> str:
     return (f'bestvideo[height<={h}][ext=mp4]/bestvideo[height<={h}]'
             f'+bestaudio[language={lang}]/bestaudio')
 
+def make_audio_fmt(lang: str, fd: FormatData) -> str:
+    """Best format containing the given language audio (for MP3/WAV extraction)."""
+    # Pick highest-res HLS muxed stream that has this language
+    best_h = max((k[0] for k in fd.hls_map if k[1] == lang), default=None)
+    if best_h is not None:
+        return fd.hls_map[(best_h, lang)]
+    return f'bestaudio[language={lang}]/bestaudio'
+
 # ── Utility ────────────────────────────────────────────────────────────────────
 def fmt_dur(s):
     if not s: return ''
@@ -155,8 +163,8 @@ class MediaGrabApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title('MediaGrab')
-        self.geometry('940x860')
-        self.minsize(780, 660)
+        self.geometry('1100x820')
+        self.minsize(900, 680)
         self.configure(fg_color=C['bg'])
 
         self._fd:        FormatData | None = None
@@ -234,225 +242,297 @@ class MediaGrabApp(ctk.CTk):
 
     # ── Build UI ──────────────────────────────────────────────────────────────
     def _build_ui(self):
+        self.grid_columnconfigure(1, weight=1)
+        self.grid_rowconfigure(0, weight=1)
+
+        # ── Sidebar ───────────────────────────────────────────────────────────
+        side = ctk.CTkFrame(self, fg_color=C['sidebar'], width=220, corner_radius=0)
+        side.grid(row=0, column=0, sticky='nsew')
+        side.grid_propagate(False)
+        side.grid_columnconfigure(0, weight=1)
+        side.grid_rowconfigure(2, weight=1)
+
+        # Logo
+        lf = ctk.CTkFrame(side, fg_color='transparent')
+        lf.grid(row=0, column=0, sticky='ew', padx=20, pady=(26, 22))
+        ctk.CTkLabel(lf, text='MediaGrab', font=('Segoe UI', 20, 'bold'),
+                     text_color=C['accent']).pack(anchor='w')
+        ctk.CTkLabel(lf, text='PRO VERSION', font=('Consolas', 8),
+                     text_color=C['sub']).pack(anchor='w', pady=(3, 0))
+
+        # Nav
+        nf = ctk.CTkFrame(side, fg_color='transparent')
+        nf.grid(row=1, column=0, sticky='ew')
+        for label, active in [('  Dashboard', True), ('  Queue', False),
+                               ('  Library', False), ('  Settings', False)]:
+            r = ctk.CTkFrame(nf, fg_color=C['card'] if active else 'transparent',
+                             corner_radius=0, height=44)
+            r.pack(fill='x', pady=1)
+            r.pack_propagate(False)
+            if active:
+                ctk.CTkFrame(r, fg_color=C['accent'], width=3,
+                             corner_radius=0).pack(side='left', fill='y')
+            ctk.CTkLabel(r, text=label, font=('Segoe UI', 12),
+                         text_color=C['accent'] if active else C['sub']
+                         ).pack(side='left', padx=10)
+
+        # User panel
+        uf = ctk.CTkFrame(side, fg_color=C['card'], corner_radius=8)
+        uf.grid(row=3, column=0, sticky='ew', padx=14, pady=20)
+        ctk.CTkLabel(uf, text='Admin User', font=('Segoe UI', 11, 'bold'),
+                     text_color=C['text']).pack(padx=14, pady=(12, 2), anchor='w')
+        ctk.CTkLabel(uf, text='Premium Plan', font=('Consolas', 8),
+                     text_color=C['sub']).pack(padx=14, pady=(0, 12), anchor='w')
+
+        # ── Right side ────────────────────────────────────────────────────────
+        right = ctk.CTkFrame(self, fg_color=C['bg'], corner_radius=0)
+        right.grid(row=0, column=1, sticky='nsew')
+        right.grid_rowconfigure(1, weight=1)
+        right.grid_columnconfigure(0, weight=1)
+
         # Header bar
-        hdr = ctk.CTkFrame(self, fg_color=C['bg2'], corner_radius=0, height=64)
-        hdr.pack(fill='x')
-        hdr.pack_propagate(False)
-        logo = ctk.CTkFrame(hdr, fg_color='transparent')
-        logo.pack(side='left', padx=24, pady=12)
-        ctk.CTkLabel(logo, text='Media', font=('Segoe UI', 20, 'bold'),
-                     text_color=C['text']).pack(side='left')
-        ctk.CTkLabel(logo, text='Grab', font=('Segoe UI', 20, 'bold'),
-                     text_color=C['accent']).pack(side='left')
-        ctk.CTkLabel(hdr, text='Download videos & playlists · any quality · any language',
-                     font=FONT_SM, text_color=C['sub']).pack(side='left', padx=6)
+        hdr = ctk.CTkFrame(right, fg_color=C['sidebar'], height=52, corner_radius=0)
+        hdr.grid(row=0, column=0, sticky='ew')
+        hdr.grid_propagate(False)
+        self._spin_lbl = ctk.CTkLabel(hdr, text='', font=('Consolas', 9),
+                                       text_color=C['sub'])
+        self._spin_lbl.pack(side='left', padx=20, pady=14)
+        ctk.CTkLabel(hdr, text='yt-dlp powered  ·  v2.0',
+                     font=('Consolas', 8), text_color=C['sub']
+                     ).pack(side='right', padx=20)
 
         # Scrollable body
-        body = ctk.CTkScrollableFrame(self, fg_color=C['bg'], corner_radius=0)
-        body.pack(fill='both', expand=True)
+        body = ctk.CTkScrollableFrame(right, fg_color=C['bg'], corner_radius=0)
+        body.grid(row=1, column=0, sticky='nsew')
         self._body = body
 
-        # ── URL card ──────────────────────────────────────────────────────────
-        uc = self._card(body, (20, 10))
-        ctk.CTkLabel(uc, text='Video or Playlist URL',
-                     font=('Segoe UI', 10, 'bold'), text_color=C['sub']
-                     ).pack(anchor='w', padx=18, pady=(14, 4))
-        ur = ctk.CTkFrame(uc, fg_color='transparent')
-        ur.pack(fill='x', padx=14, pady=(0, 4))
+        # ── Hero section ──────────────────────────────────────────────────────
+        hero = ctk.CTkFrame(body, fg_color='transparent')
+        hero.pack(fill='x', padx=40, pady=(36, 28))
+        ctk.CTkLabel(hero, text='Download Media',
+                     font=('Segoe UI', 28, 'bold'), text_color=C['text']
+                     ).pack(pady=(0, 6))
+        ctk.CTkLabel(hero,
+                     text='Paste a YouTube URL to extract any quality, any language.',
+                     font=('Segoe UI', 12), text_color=C['sub']).pack(pady=(0, 18))
+
+        url_box = ctk.CTkFrame(hero, fg_color=C['card2'], corner_radius=12,
+                               border_width=1, border_color=C['border'])
+        url_box.pack(fill='x')
         self._url_entry = ctk.CTkEntry(
-            ur, placeholder_text='Paste YouTube video or playlist URL…',
-            font=FONT, fg_color=C['bg2'], border_color=C['border'],
-            text_color=C['text'], placeholder_text_color=C['sub'],
-            border_width=1, corner_radius=10, height=44)
-        self._url_entry.pack(side='left', fill='x', expand=True, padx=(0, 10))
+            url_box, placeholder_text='https://www.youtube.com/watch?v=...',
+            font=('Segoe UI', 13), fg_color='transparent',
+            border_color='transparent', text_color=C['text'],
+            placeholder_text_color=C['sub'], border_width=0,
+            corner_radius=0, height=52)
+        self._url_entry.pack(side='left', fill='x', expand=True, padx=(14, 0))
         self._url_entry.bind('<Return>', lambda _: self._fetch())
         self._fetch_btn = ctk.CTkButton(
-            ur, text='  Fetch  ', font=('Segoe UI', 11, 'bold'),
+            url_box, text='Download ↓', font=('Segoe UI', 12, 'bold'),
             fg_color=C['accent'], hover_color=C['accent2'],
-            corner_radius=10, height=44, width=110, command=self._fetch)
-        self._fetch_btn.pack(side='left')
-        self._spin_lbl = ctk.CTkLabel(uc, text='', font=FONT_SM, text_color=C['sub'])
-        self._spin_lbl.pack(anchor='w', padx=18, pady=(2, 10))
+            text_color='#ffffff', corner_radius=10, height=38, width=140,
+            command=self._fetch)
+        self._fetch_btn.pack(side='right', padx=8, pady=7)
+
+        chips = ctk.CTkFrame(hero, fg_color='transparent')
+        chips.pack(pady=(14, 0))
+        for chip in ['✓  4K / 8K', '✓  All Languages', '✓  MP3 / WAV', '✓  Playlists']:
+            ctk.CTkLabel(chips, text=chip, font=('Segoe UI', 10),
+                         text_color=C['sub']).pack(side='left', padx=14)
 
         # ── Video info card ────────────────────────────────────────────────────
         self._info_card = self._card(body, (0, 10))
         self._info_card.pack_forget()
         ii = ctk.CTkFrame(self._info_card, fg_color='transparent')
-        ii.pack(fill='x', padx=16, pady=14)
-        self._thumb_lbl = ctk.CTkLabel(ii, text='', width=180, height=102,
-                                        fg_color=C['bg2'], corner_radius=8,
+        ii.pack(fill='x', padx=18, pady=16)
+        self._thumb_lbl = ctk.CTkLabel(ii, text='', width=160, height=90,
+                                        fg_color=C['card2'], corner_radius=8,
                                         text_color=C['sub'])
         self._thumb_lbl.pack(side='left', padx=(0, 16))
         meta = ctk.CTkFrame(ii, fg_color='transparent')
         meta.pack(side='left', fill='x', expand=True)
-        self._title_lbl   = ctk.CTkLabel(meta, text='', font=FONT_LG,
-                                          text_color=C['text'],
-                                          wraplength=580, justify='left', anchor='w')
-        self._title_lbl.pack(anchor='w', pady=(4, 6))
-        self._channel_lbl = ctk.CTkLabel(meta, text='', font=FONT_SM,
+        self._title_lbl = ctk.CTkLabel(meta, text='', font=('Segoe UI', 14, 'bold'),
+                                        text_color=C['text'],
+                                        wraplength=480, justify='left', anchor='w')
+        self._title_lbl.pack(anchor='w', pady=(2, 4))
+        self._channel_lbl = ctk.CTkLabel(meta, text='', font=('Segoe UI', 10),
                                           text_color=C['sub'])
         self._channel_lbl.pack(anchor='w')
         br = ctk.CTkFrame(meta, fg_color='transparent')
-        br.pack(anchor='w', pady=(8, 0))
+        br.pack(anchor='w', pady=(10, 0))
         self._dur_badge   = self._badge(br, '⏱ —')
-        self._views_badge = self._badge(br, '👁 —')
+        self._views_badge = self._badge(br, '—')
         self._lang_badge  = self._badge(br, '🔊 —')
 
         # ── Playlist table card ────────────────────────────────────────────────
         self._pl_card = self._card(body, (0, 10))
         self._pl_card.pack_forget()
-        pl_hdr = ctk.CTkFrame(self._pl_card, fg_color='transparent')
-        pl_hdr.pack(fill='x', padx=16, pady=(12, 6))
-        self._pl_title_lbl = ctk.CTkLabel(pl_hdr, text='', font=FONT_LG,
+        ph = ctk.CTkFrame(self._pl_card, fg_color='transparent')
+        ph.pack(fill='x', padx=18, pady=(14, 6))
+        self._pl_title_lbl = ctk.CTkLabel(ph, text='', font=('Segoe UI', 13, 'bold'),
                                            text_color=C['text'])
         self._pl_title_lbl.pack(side='left')
-        self._pl_count_lbl = ctk.CTkLabel(pl_hdr, text='', font=FONT_SM,
+        self._pl_count_lbl = ctk.CTkLabel(ph, text='', font=FONT_SM,
                                            text_color=C['sub'])
         self._pl_count_lbl.pack(side='left', padx=12)
-        # Column headers
-        col_hdr = ctk.CTkFrame(self._pl_card, fg_color=C['bg2'], corner_radius=0)
-        col_hdr.pack(fill='x', padx=16)
+        col_hdr = ctk.CTkFrame(self._pl_card, fg_color=C['card2'], corner_radius=0)
+        col_hdr.pack(fill='x', padx=18)
         for txt, w in [('#', 40), ('Title', 0), ('Duration', 80), ('Status', 100)]:
-            ctk.CTkLabel(col_hdr, text=txt, font=('Segoe UI', 9, 'bold'),
+            ctk.CTkLabel(col_hdr, text=txt, font=('Consolas', 9),
                          text_color=C['sub'], width=w if w else 0,
-                         anchor='w').pack(side='left', padx=(8 if txt == '#' else 4, 4),
+                         anchor='w').pack(side='left',
+                                          padx=(8 if txt == '#' else 4, 4),
                                           pady=6, expand=(txt == 'Title'))
-        # Scrollable rows container
         self._pl_rows_frame = ctk.CTkScrollableFrame(
-            self._pl_card, fg_color=C['card'], corner_radius=0, height=260)
-        self._pl_rows_frame.pack(fill='x', padx=16, pady=(0, 10))
+            self._pl_card, fg_color=C['card'], corner_radius=0, height=240)
+        self._pl_rows_frame.pack(fill='x', padx=18, pady=(0, 12))
 
         # ── Options card ──────────────────────────────────────────────────────
         self._opt_card = self._card(body, (0, 10))
         self._opt_card.pack_forget()
+
+        fi = ctk.CTkFrame(self._opt_card, fg_color='transparent')
+        fi.pack(fill='x', padx=18, pady=(16, 0))
+        ctk.CTkLabel(fi, text='DOWNLOAD AS', font=('Consolas', 9),
+                     text_color=C['sub']).pack(anchor='w', pady=(0, 8))
+        self._dl_fmt_var = tk.StringVar(value='Video (MP4)')
+        self._dl_fmt_seg = ctk.CTkSegmentedButton(
+            fi, values=['Video (MP4)', 'Audio MP3', 'Audio WAV'],
+            variable=self._dl_fmt_var, font=('Segoe UI', 11),
+            fg_color=C['card2'], selected_color=C['accent'],
+            selected_hover_color=C['accent2'],
+            unselected_color=C['card2'], unselected_hover_color=C['border'],
+            text_color=C['text'], command=self._on_dlformat_change)
+        self._dl_fmt_seg.pack(fill='x')
+
         oi = ctk.CTkFrame(self._opt_card, fg_color='transparent')
-        oi.pack(fill='x', padx=16, pady=14)
+        oi.pack(fill='x', padx=18, pady=16)
         qc = ctk.CTkFrame(oi, fg_color='transparent')
         qc.pack(side='left', fill='x', expand=True, padx=(0, 12))
-        ctk.CTkLabel(qc, text='Quality', font=('Segoe UI', 10, 'bold'),
+        ctk.CTkLabel(qc, text='QUALITY', font=('Consolas', 9),
                      text_color=C['sub']).pack(anchor='w', pady=(0, 6))
         self._quality_var = tk.StringVar(value='—')
-        self._quality_cb  = ctk.CTkComboBox(
+        self._quality_cb = ctk.CTkComboBox(
             qc, variable=self._quality_var, font=FONT,
-            fg_color=C['bg2'], border_color=C['border'],
+            fg_color=C['card2'], border_color=C['border'],
             button_color=C['accent'], button_hover_color=C['accent2'],
             dropdown_fg_color=C['card2'], dropdown_text_color=C['text'],
             dropdown_hover_color=C['accent'],
-            text_color=C['text'], corner_radius=10, height=42,
+            text_color=C['text'], corner_radius=8, height=40,
             state='disabled', command=self._on_opt_change)
         self._quality_cb.pack(fill='x')
 
         lc = ctk.CTkFrame(oi, fg_color='transparent')
         lc.pack(side='left', fill='x', expand=True)
-        ctk.CTkLabel(lc, text='Audio Language', font=('Segoe UI', 10, 'bold'),
+        ctk.CTkLabel(lc, text='AUDIO LANGUAGE', font=('Consolas', 9),
                      text_color=C['sub']).pack(anchor='w', pady=(0, 6))
         self._lang_var = tk.StringVar(value='—')
-        self._lang_cb  = ctk.CTkComboBox(
+        self._lang_cb = ctk.CTkComboBox(
             lc, variable=self._lang_var, font=FONT,
-            fg_color=C['bg2'], border_color=C['border'],
+            fg_color=C['card2'], border_color=C['border'],
             button_color=C['accent'], button_hover_color=C['accent2'],
             dropdown_fg_color=C['card2'], dropdown_text_color=C['text'],
             dropdown_hover_color=C['accent'],
-            text_color=C['text'], corner_radius=10, height=42,
+            text_color=C['text'], corner_radius=8, height=40,
             state='disabled', command=self._on_opt_change)
         self._lang_cb.pack(fill='x')
-        self._fmt_hint = ctk.CTkLabel(self._opt_card, text='', font=FONT_SM,
+        self._fmt_hint = ctk.CTkLabel(self._opt_card, text='', font=('Consolas', 9),
                                        text_color=C['sub'])
-        self._fmt_hint.pack(anchor='w', padx=18, pady=(0, 10))
+        self._fmt_hint.pack(anchor='w', padx=18, pady=(0, 12))
 
         # ── Save-to card ──────────────────────────────────────────────────────
         self._save_card = self._card(body, (0, 10))
         self._save_card.pack_forget()
         si = ctk.CTkFrame(self._save_card, fg_color='transparent')
-        si.pack(fill='x', padx=16, pady=14)
-        ctk.CTkLabel(si, text='Save to', font=('Segoe UI', 10, 'bold'),
-                     text_color=C['sub']).pack(anchor='w', pady=(0, 6))
+        si.pack(fill='x', padx=18, pady=16)
+        ctk.CTkLabel(si, text='SAVE TO', font=('Consolas', 9),
+                     text_color=C['sub']).pack(anchor='w', pady=(0, 8))
         sr = ctk.CTkFrame(si, fg_color='transparent')
         sr.pack(fill='x')
         self._out_entry = ctk.CTkEntry(
-            sr, font=FONT, fg_color=C['bg2'], border_color=C['border'],
-            text_color=C['text'], border_width=1, corner_radius=10, height=42)
+            sr, font=FONT, fg_color=C['card2'], border_color=C['border'],
+            text_color=C['text'], border_width=1, corner_radius=8, height=40)
         self._out_entry.insert(0, os.path.expanduser('~/Downloads'))
         self._out_entry.pack(side='left', fill='x', expand=True, padx=(0, 10))
-        ctk.CTkButton(sr, text='Browse', font=FONT, width=90, height=42,
+        ctk.CTkButton(sr, text='Browse', font=FONT, width=90, height=40,
                       fg_color=C['card2'], hover_color=C['border'],
-                      text_color=C['text'], corner_radius=10,
+                      text_color=C['text'], corner_radius=8,
                       command=self._browse).pack(side='left')
 
         # ── Download card ─────────────────────────────────────────────────────
         self._dl_card = self._card(body, (0, 10))
         self._dl_card.pack_forget()
         di = ctk.CTkFrame(self._dl_card, fg_color='transparent')
-        di.pack(fill='x', padx=16, pady=16)
+        di.pack(fill='x', padx=18, pady=18)
 
-        btn_row = ctk.CTkFrame(di, fg_color='transparent')
-        btn_row.pack(fill='x', pady=(0, 14))
+        br2 = ctk.CTkFrame(di, fg_color='transparent')
+        br2.pack(fill='x', pady=(0, 16))
         self._dl_btn = ctk.CTkButton(
-            btn_row, text='▶  Download Now',
+            br2, text='Download Now',
             font=('Segoe UI', 13, 'bold'),
             fg_color=C['accent'], hover_color=C['accent2'],
-            corner_radius=12, height=52, command=self._download)
-        self._dl_btn.pack(side='left', fill='x', expand=True, padx=(0, 8))
+            text_color='#ffffff', corner_radius=10, height=50,
+            command=self._download)
+        self._dl_btn.pack(side='left', fill='x', expand=True, padx=(0, 10))
         self._stop_btn = ctk.CTkButton(
-            btn_row, text='■ Stop', font=FONT,
-            fg_color=C['card2'], hover_color=C['error'],
-            text_color=C['sub'], corner_radius=12,
-            height=52, width=90, command=self._stop_dl)
+            br2, text='Stop', font=FONT,
+            fg_color=C['card2'], hover_color='#3a1515',
+            text_color=C['sub'], corner_radius=10,
+            height=50, width=80, command=self._stop_dl)
         self._stop_btn.pack(side='left')
 
-        # Overall progress
+        # Progress row
         op = ctk.CTkFrame(di, fg_color='transparent')
-        op.pack(fill='x', pady=(0, 6))
-        self._pct_lbl  = ctk.CTkLabel(op, text='', font=('Segoe UI', 10, 'bold'),
-                                        text_color=C['text'], width=50)
+        op.pack(fill='x', pady=(0, 4))
+        self._pct_lbl = ctk.CTkLabel(op, text='', font=('Consolas', 10, 'bold'),
+                                      text_color=C['text'], width=54)
         self._pct_lbl.pack(side='left', padx=(0, 10))
-        self._prog_bar = ctk.CTkProgressBar(op, fg_color=C['bg2'],
+        self._prog_bar = ctk.CTkProgressBar(op, fg_color=C['card2'],
                                              progress_color=C['accent'],
-                                             corner_radius=6, height=10)
+                                             corner_radius=3, height=4)
         self._prog_bar.set(0)
         self._prog_bar.pack(side='left', fill='x', expand=True, padx=(0, 10))
-        self._eta_lbl  = ctk.CTkLabel(op, text='', font=FONT_SM,
-                                        text_color=C['sub'], width=150, anchor='e')
+        self._eta_lbl = ctk.CTkLabel(op, text='', font=('Consolas', 9),
+                                      text_color=C['sub'], width=160, anchor='e')
         self._eta_lbl.pack(side='left')
 
-        # Playlist overall progress
-        self._pl_prog_lbl = ctk.CTkLabel(di, text='', font=FONT_SM,
+        self._pl_prog_lbl = ctk.CTkLabel(di, text='', font=('Consolas', 9),
                                           text_color=C['sub'])
         self._pl_prog_lbl.pack(anchor='w')
 
         # ── Log card ──────────────────────────────────────────────────────────
-        lc2 = self._card(body, (0, 20))
-        lh  = ctk.CTkFrame(lc2, fg_color='transparent')
-        lh.pack(fill='x', padx=16, pady=(10, 4))
-        ctk.CTkLabel(lh, text='Log', font=('Segoe UI', 10, 'bold'),
+        lc2 = self._card(body, (0, 30))
+        lh = ctk.CTkFrame(lc2, fg_color='transparent')
+        lh.pack(fill='x', padx=18, pady=(12, 4))
+        ctk.CTkLabel(lh, text='LOG', font=('Consolas', 9),
                      text_color=C['sub']).pack(side='left')
-        ctk.CTkButton(lh, text='Clear', font=FONT_SM, width=60, height=26,
-                      fg_color=C['bg2'], hover_color=C['border'],
+        ctk.CTkButton(lh, text='Clear', font=('Consolas', 9), width=56, height=24,
+                      fg_color=C['card2'], hover_color=C['border'],
                       text_color=C['sub'], corner_radius=6,
                       command=self._clear_log).pack(side='right')
-        self._log_box = ctk.CTkTextbox(lc2, height=130, font=FONT_MONO,
-                                        fg_color=C['bg2'], text_color=C['text'],
+        self._log_box = ctk.CTkTextbox(lc2, height=140, font=('Consolas', 9),
+                                        fg_color=C['card2'], text_color=C['text'],
                                         border_width=0, corner_radius=8,
                                         wrap='word', state='disabled')
-        self._log_box.pack(fill='x', padx=14, pady=(0, 14))
+        self._log_box.pack(fill='x', padx=16, pady=(0, 14))
 
     # ── Helpers ───────────────────────────────────────────────────────────────
-    def _card(self, parent, pady=(0,10)):
-        c = ctk.CTkFrame(parent, fg_color=C['card'], corner_radius=14,
+    def _card(self, parent, pady=(0, 10)):
+        c = ctk.CTkFrame(parent, fg_color=C['card'], corner_radius=12,
                           border_width=1, border_color=C['border'])
-        c.pack(fill='x', padx=20, pady=pady)
+        c.pack(fill='x', padx=24, pady=pady)
         return c
 
     def _badge(self, parent, text):
-        b = ctk.CTkLabel(parent, text=text, font=FONT_SM,
-                          fg_color=C['bg2'], text_color=C['sub'],
-                          corner_radius=8, padx=8, pady=3)
+        b = ctk.CTkLabel(parent, text=text, font=('Consolas', 9),
+                          fg_color=C['card2'], text_color=C['sub'],
+                          corner_radius=6, padx=8, pady=3)
         b.pack(side='left', padx=(0, 8))
         return b
 
     def _show_cards(self, *cards):
         for c in cards:
-            c.pack(fill='x', padx=20, pady=(0, 10))
+            c.pack(fill='x', padx=24, pady=(0, 10))
 
     def _hide_cards(self, *cards):
         for c in cards:
@@ -675,7 +755,9 @@ class MediaGrabApp(ctk.CTk):
 
     def _fill_quality(self, fd: FormatData):
         labels = [RESOLUTION_LABELS.get(r, f'{r}p') for r in reversed(fd.resolutions)]
-        self._quality_cb.configure(values=labels, state='readonly')
+        is_video = self._dl_fmt_var.get() == 'Video (MP4)'
+        self._quality_cb.configure(values=labels,
+                                   state='readonly' if (labels and is_video) else 'disabled')
         if labels: self._quality_var.set(labels[0])
 
     def _fill_lang(self, fd: FormatData):
@@ -691,13 +773,27 @@ class MediaGrabApp(ctk.CTk):
             self._lang_var.set(default)
         self._on_opt_change()
 
+    def _on_dlformat_change(self, val):
+        is_video = (val == 'Video (MP4)')
+        if self._fd:
+            self._quality_cb.configure(state='readonly' if is_video else 'disabled')
+        self._on_opt_change()
+
     def _on_opt_change(self, *_):
         if not self._fd: return
-        h = self._sel_height(); l = self._sel_lang()
-        if h and l:
-            fmt = make_fmt(h, l, self._fd)
-            self._fmt_hint.configure(
-                text=f'Format: {fmt}  ·  {RESOLUTION_LABELS.get(h, f"{h}p")}')
+        dl_fmt = self._dl_fmt_var.get()
+        l = self._sel_lang()
+        if dl_fmt == 'Video (MP4)':
+            h = self._sel_height()
+            if h and l:
+                fmt = make_fmt(h, l, self._fd)
+                self._fmt_hint.configure(
+                    text=f'Format: {fmt}  ·  {RESOLUTION_LABELS.get(h, f"{h}p")}')
+        else:
+            if l:
+                fmt = make_audio_fmt(l, self._fd)
+                self._fmt_hint.configure(
+                    text=f'Format: {fmt}  ·  {dl_fmt}  ·  {l}')
 
     def _fetch_err(self, e):
         self._fetch_btn.configure(state='normal', text='  Fetch  ')
@@ -709,27 +805,42 @@ class MediaGrabApp(ctk.CTk):
     def _download(self):
         if not self._fd: return
         outdir = self._out_entry.get().strip()
-        h = self._sel_height(); l = self._sel_lang()
+        l = self._sel_lang()
+        dl_fmt = self._dl_fmt_var.get()
         if not os.path.isdir(outdir):
             messagebox.showerror('MediaGrab', 'Output folder does not exist.')
             return
-        if not h or not l:
-            messagebox.showerror('MediaGrab', 'Select quality and audio language.')
+        if not l:
+            messagebox.showerror('MediaGrab', 'Select audio language.')
             return
+
+        # Determine format string and audio codec for post-processing
+        if dl_fmt == 'Audio MP3':
+            audio_codec = 'mp3'
+            fmt = make_audio_fmt(l, self._fd)
+            h = None
+        elif dl_fmt == 'Audio WAV':
+            audio_codec = 'wav'
+            fmt = make_audio_fmt(l, self._fd)
+            h = None
+        else:
+            audio_codec = None
+            h = self._sel_height()
+            if not h:
+                messagebox.showerror('MediaGrab', 'Select video quality.')
+                return
+            fmt = make_fmt(h, l, self._fd)
 
         self._dl_stop = False
         self._dl_btn.configure(state='disabled', text='Downloading…')
 
         if self._pl_entries:
-            # Playlist mode
             threading.Thread(target=self._dl_playlist,
-                             args=(outdir, h, l), daemon=True).start()
+                             args=(outdir, h, l, audio_codec), daemon=True).start()
         else:
-            # Single video — wrap in a completion callback
             url = self._url_entry.get().strip()
-            fmt = make_fmt(h, l, self._fd)
             def _run_single():
-                ok = self._dl_single(url, fmt, outdir, None)
+                ok = self._dl_single(url, fmt, outdir, None, audio_codec)
                 self.after(0, lambda: self._dl_single_done(ok))
             threading.Thread(target=_run_single, daemon=True).start()
 
@@ -739,7 +850,7 @@ class MediaGrabApp(ctk.CTk):
         self._spin_start('Stopping after current video…')
 
     # ── Single download ───────────────────────────────────────────────────────
-    def _dl_single(self, url, fmt, outdir, pl_entry):
+    def _dl_single(self, url, fmt, outdir, pl_entry, audio_codec=None):
         def _hook(d):
             s = d.get('status')
             if s == 'downloading':
@@ -763,10 +874,16 @@ class MediaGrabApp(ctk.CTk):
 
         try:
             outtmpl = os.path.join(outdir, '%(title)s [%(language)s].%(ext)s')
-            opts = self._ydl_opts(
-                format=fmt, outtmpl=outtmpl,
-                merge_output_format='mp4',
-                progress_hooks=[_hook])
+            extra = {}
+            if audio_codec:
+                pp = {'key': 'FFmpegExtractAudio', 'preferredcodec': audio_codec}
+                if audio_codec == 'mp3':
+                    pp['preferredquality'] = '320'
+                extra['postprocessors'] = [pp]
+            else:
+                extra['merge_output_format'] = 'mp4'
+            opts = self._ydl_opts(format=fmt, outtmpl=outtmpl,
+                                  progress_hooks=[_hook], **extra)
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.download([url])
             return True
@@ -778,7 +895,7 @@ class MediaGrabApp(ctk.CTk):
             return False
 
     # ── Playlist download ─────────────────────────────────────────────────────
-    def _dl_playlist(self, outdir, h, l):
+    def _dl_playlist(self, outdir, h, l, audio_codec=None):
         total   = len(self._pl_entries)
         done    = 0
         failed  = 0
@@ -793,18 +910,18 @@ class MediaGrabApp(ctk.CTk):
                 text='⬇ Downloading', text_color=C['accent']))
             self._log(f'[{e["idx"]}/{total}] {e["title"]}')
 
-            # Each playlist video may have different formats; fetch its own format
             try:
                 opts = self._ydl_opts()
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     info = ydl.extract_info(e['url'], download=False)
                 vfd  = parse_info(info)
-                fmt  = make_fmt(h, l, vfd)
+                fmt  = make_audio_fmt(l, vfd) if audio_codec else make_fmt(h, l, vfd)
             except Exception as ex:
                 self._log(f'  ⚠ Could not fetch format: {ex}  — trying best default')
-                fmt = f'bestvideo[height<={h}]+bestaudio/best[height<={h}]'
+                fmt = (f'bestaudio[language={l}]/bestaudio' if audio_codec
+                       else f'bestvideo[height<={h}]+bestaudio/best[height<={h}]')
 
-            ok = self._dl_single(e['url'], fmt, outdir, e)
+            ok = self._dl_single(e['url'], fmt, outdir, e, audio_codec)
 
             if ok:
                 done += 1
