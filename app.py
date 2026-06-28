@@ -174,9 +174,14 @@ class MediaGrabApp(ctk.CTk):
 
     # ── yt-dlp opts ───────────────────────────────────────────────────────────
     def _ydl_opts(self, skip_hls=False, **kw):
-        o = {'quiet': True, 'no_warnings': False, 'cachedir': _CACHE}
+        o = {
+            'quiet':       False,   # False so status msgs reach our logger
+            'no_warnings': False,
+            'cachedir':    _CACHE,
+            'logger':      self._logger(),   # always wire our logger
+        }
         if os.path.isfile(_NODE):
-            o['js_runtimes']      = f'node:{_NODE}'
+            o['js_runtimes']       = f'node:{_NODE}'
             o['remote_components'] = 'ejs:github'
         if os.path.isfile(_FFMPEG):
             o['ffmpeg_location'] = os.path.dirname(_FFMPEG)
@@ -185,14 +190,42 @@ class MediaGrabApp(ctk.CTk):
         o.update(kw)
         return o
 
+    # Step labels shown in the spinner during fetch
+    _STEP_LABELS = [
+        ('Downloading webpage',          'Opening video page…'),
+        ('Downloading android',          'Fetching video info…'),
+        ('Downloading player',           'Loading YouTube player…'),
+        ('Solving JS challenges',        'Solving YouTube challenge…'),
+        ('Downloading m3u8',             'Loading audio tracks…'),
+        ('challenge solver lib script',  'Downloading challenge solver (first time)…'),
+        ('Downloading m3u8 manifest',    'Reading stream manifest…'),
+    ]
+
     def _logger(self):
         app = self
+        step_labels = self._STEP_LABELS
+
         class L:
-            def debug(s,m):
-                if not m.startswith('[debug]'): app._log(m)
-            def info(s,m):    app._log(m)
-            def warning(s,m): app._log(f'⚠  {m}')
-            def error(s,m):   app._log(f'✖  {m}')
+            def debug(self, m):
+                # yt-dlp sends status lines as debug; skip raw internal noise
+                if m.startswith('[debug]'):
+                    return
+                app._log(m)
+                # Update spinner text to reflect current step
+                for keyword, label in step_labels:
+                    if keyword in m:
+                        app.after(0, lambda lbl=label: app._spin_start(lbl))
+                        break
+
+            def info(self, m):
+                app._log(m)
+
+            def warning(self, m):
+                app._log(f'⚠  {m}')
+
+            def error(self, m):
+                app._log(f'✖  {m}')
+
         return L()
 
     # ── Build UI ──────────────────────────────────────────────────────────────
@@ -473,7 +506,7 @@ class MediaGrabApp(ctk.CTk):
     # ── Single video fetch (2-phase) ─────────────────────────────────────────
     def _fetch_video_p1(self, url):
         try:
-            opts = self._ydl_opts(skip_hls=True, logger=self._logger())
+            opts = self._ydl_opts(skip_hls=True)
             with yt_dlp.YoutubeDL(opts) as ydl:
                 info = ydl.extract_info(url, download=False)
             fd = parse_info(info)
@@ -493,7 +526,7 @@ class MediaGrabApp(ctk.CTk):
 
         def _p2():
             try:
-                opts = self._ydl_opts(logger=self._logger())
+                opts = self._ydl_opts()
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     info = ydl.extract_info(url, download=False)
                 fd2 = parse_info(info)
@@ -718,8 +751,7 @@ class MediaGrabApp(ctk.CTk):
             opts = self._ydl_opts(
                 format=fmt, outtmpl=outtmpl,
                 merge_output_format='mp4',
-                progress_hooks=[_hook],
-                logger=self._logger(), quiet=False)
+                progress_hooks=[_hook])
             with yt_dlp.YoutubeDL(opts) as ydl:
                 ydl.download([url])
             return True
@@ -748,7 +780,7 @@ class MediaGrabApp(ctk.CTk):
 
             # Each playlist video may have different formats; fetch its own format
             try:
-                opts = self._ydl_opts(logger=self._logger())
+                opts = self._ydl_opts()
                 with yt_dlp.YoutubeDL(opts) as ydl:
                     info = ydl.extract_info(e['url'], download=False)
                 vfd  = parse_info(info)
