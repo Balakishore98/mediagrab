@@ -40,9 +40,17 @@ jobs:
       - name: Build APK
         run: buildozer -v android debug
 
-      - name: Upload APK
+      - name: Upload APK artifact (GitHub)
         uses: actions/upload-artifact@v4
         with:
           name: mediagrab-debug
           path: bin/*.apk
           retention-days: 30
+
+      - name: Upload APK to Google Drive
+        env:
+          GDRIVE_CREDENTIALS: ${{ secrets.GDRIVE_CREDENTIALS }}
+          GDRIVE_FOLDER_ID:   ${{ secrets.GDRIVE_FOLDER_ID }}
+        run: |
+          pip install google-api-python-client google-auth
+          python upload_gdrive.py
